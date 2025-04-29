@@ -188,3 +188,35 @@ class CosyVoice2(CosyVoice):
                 logging.info('yield speech len {}, rtf {}'.format(speech_len, (time.time() - start_time) / speech_len))
                 yield model_output
                 start_time = time.time()
+                
+    def my_inference_zero_shot(self, tts_text, prompt_text, prompt_speech_16k, audio_model_path, stream=False, speed=1.0, text_frontend=True):
+        # 文本归一化处理
+        prompt_text = self.frontend.text_normalize(prompt_text, split=False, text_frontend=text_frontend)
+        for i in tqdm(self.frontend.text_normalize(tts_text, split=True, text_frontend=text_frontend)):
+            if (not isinstance(i, Generator)) and len(i) < 0.5 * len(prompt_text):
+                logging.warning('synthesis text {} too short than prompt text {}, this may lead to bad performance'.format(i, prompt_text))
+            model_input = self.frontend.frontend_zero_shot(i, prompt_text, prompt_speech_16k, self.sample_rate, zero_shot_spk_id='')
+            start_time = time.time()
+            logging.info('synthesis text {}'.format(i))
+            logging.info('===========音色模型保存位置audio_model_path:{}========'.format(audio_model_path))
+            # 保存模型
+            torch.save(model_input, audio_model_path) 
+            
+            for model_output in self.model.tts(**model_input, stream=stream, speed=speed):
+                speech_len = model_output['tts_speech'].shape[1] / self.sample_rate
+                logging.info('yield speech len {}, rtf {}'.format(speech_len, (time.time() - start_time) / speech_len))
+                yield model_output
+                start_time = time.time()
+                
+    def my_test_speaker(self, spk_id, tts_text: str):
+        text_normalize = self.frontend.text_normalize(tts_text, split=True, text_frontend=True)
+        for i in tqdm(text_normalize):
+            model_input = self.frontend.my_frontend_sft(i, spk_id)
+            start_time = time.time()
+            logging.info('测试保存的自定义音色模型, synthesis text {}'.format(i))
+            for model_output in self.model.tts(**model_input, stream=False, speed=1.0):
+                speech_len = model_output['tts_speech'].shape[1] / self.sample_rate
+                logging.info('yield speech len {}, rtf {}'.format(speech_len, (time.time() - start_time) / speech_len))
+                yield model_output
+                start_time = time.time()
+                
